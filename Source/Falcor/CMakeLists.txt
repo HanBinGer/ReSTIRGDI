@@ -297,6 +297,25 @@ target_sources(Falcor PRIVATE
     Rendering/RTXDI/RTXDISetup.cs.slang
     Rendering/RTXDI/SurfaceData.slang
 
+    Rendering/RESTIRGDI/EnvLightUpdater.cs.slang
+    Rendering/RESTIRGDI/LightUpdater.cs.slang
+    Rendering/RESTIRGDI/PackedTypes.slang
+    Rendering/RESTIRGDI/PolymorphicLight.slang
+    Rendering/RESTIRGDI/ReflectTypes.cs.slang
+    Rendering/RESTIRGDI/ReSTIRGDI.cpp
+    Rendering/RESTIRGDI/ReSTIRGDI.h
+    Rendering/RESTIRGDI/ReSTIRGDI.slang
+    Rendering/RESTIRGDI/ReSTIRGDISetup.cs.slang
+    Rendering/RESTIRGDI/SurfaceData.slang
+    Rendering/RESTIRGDI/RestirgdiTypes.h
+    Rendering/RESTIRGDI/RestirgdiParameters.h
+    Rendering/RESTIRGDI/Reservoir.slang
+    Rendering/RESTIRGDI/ResamplingFunctions.slang
+    Rendering/RESTIRGDI/RestirgdiMath.slang   
+    Rendering/RESTIRGDI/RestirgdiHelpers.slang
+    Rendering/RESTIRGDI/shift.slang
+
+
     Rendering/Utils/PixelStats.cpp
     Rendering/Utils/PixelStats.cs.slang
     Rendering/Utils/PixelStats.h

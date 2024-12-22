@@ -28,7 +28,7 @@
 #pragma once
 #include "Falcor.h"
 #include "RenderGraph/RenderPass.h"
-#include "ReSTIRGDI.h"
+#include "Rendering/RESTIRGDI/ReSTIRGDI.h"
 
 using namespace Falcor;
 
@@ -46,11 +46,11 @@ public:
 
     virtual Properties getProperties() const override;
     virtual RenderPassReflection reflect(const CompileData& compileData) override;
-    virtual void compile(RenderContext* pRenderContext, const CompileData& compileData) override {}
+    virtual void compile(RenderContext* pRenderContext, const CompileData& compileData) override;
     virtual void execute(RenderContext* pRenderContext, const RenderData& renderData) override;
     virtual void renderUI(Gui::Widgets& widget) override;
-    virtual void setScene(RenderContext* pRenderContext, const ref<Scene>& pScene) override {}
-    virtual bool onMouseEvent(const MouseEvent& mouseEvent) override { return false; }
+    virtual void setScene(RenderContext* pRenderContext, const ref<Scene>& pScene) override;
+    virtual bool onMouseEvent(const MouseEvent& mouseEvent) override;
     virtual bool onKeyEvent(const KeyboardEvent& keyEvent) override { return false; }
 
 private:

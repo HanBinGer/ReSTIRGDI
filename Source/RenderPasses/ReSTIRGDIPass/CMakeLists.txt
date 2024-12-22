@@ -3,7 +3,6 @@ add_plugin(ReSTIRGDIPass)
 target_sources(ReSTIRGDIPass PRIVATE
     ReSTIRGDIPass.cpp
     ReSTIRGDIPass.h
-    ReSTIRGDI.h
     FinalShading.cs.slang
     LoadShadingData.slang
     PrepareSurfaceData.cs.slang

@@ -87,7 +87,7 @@ void ReSTIRGDIPass::parseProperties(const Properties& props)
         if (key == kOptions)
             mOptions = value;
         else
-            logWarning("Unknown property '{}' in RTXDIPass properties.", key);
+            logWarning("Unknown property '{}' in ReSTIRGDIPass properties.", key);
     }
 }
 
@@ -157,7 +157,7 @@ void ReSTIRGDIPass::setScene(RenderContext* pRenderContext, const ref<Scene>& pS
     {
         if (pScene->hasProceduralGeometry())
         {
-            logWarning("RTXDIPass: This render pass only supports triangles. Other types of geometry will be ignored.");
+            logWarning("ReSTIRGDIPass: This render pass only supports triangles. Other types of geometry will be ignored.");
         }
 
         mpReSTIRGDI = std::make_unique<ReSTIRGDI>(mpScene, mOptions);
@@ -191,7 +191,7 @@ void ReSTIRGDIPass::recreatePrograms()
 
 void ReSTIRGDIPass::prepareSurfaceData(RenderContext* pRenderContext, const ref<Texture>& pVBuffer)
 {
-    FALCOR_ASSERT(mpRTXDI);
+    FALCOR_ASSERT(mpReSTIRGDI);
     FALCOR_ASSERT(pVBuffer);
 
     FALCOR_PROFILE(pRenderContext, "prepareSurfaceData");
@@ -225,7 +225,7 @@ void ReSTIRGDIPass::prepareSurfaceData(RenderContext* pRenderContext, const ref<
 
 void ReSTIRGDIPass::finalShading(RenderContext* pRenderContext, const ref<Texture>& pVBuffer, const RenderData& renderData)
 {
-    FALCOR_ASSERT(mpRTXDI);
+    FALCOR_ASSERT(mpReSTIRGDI);
     FALCOR_ASSERT(pVBuffer);
 
     FALCOR_PROFILE(pRenderContext, "finalShading");

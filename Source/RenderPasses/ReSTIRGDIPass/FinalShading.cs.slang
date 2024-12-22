@@ -28,7 +28,7 @@
 import LoadShadingData;
 import Scene.RaytracingInline;
 import Rendering.Materials.IsotropicGGX;
-import Rendering.RTXDI.RTXDI;
+import Rendering.ReSTIRGDI.ReSTIRGDI;
 import Utils.Sampling.TinyUniformSampleGenerator;
 
 RWTexture2D<float4> gColor;
@@ -74,11 +74,11 @@ struct FinalShading
             let mi = gScene.materials.getMaterialInstance(sd, lod, hints);
             let bsdfProperties = mi.getProperties(sd);
 
-            // Get final sample from RTXDI.
+            // Get final sample from ReSTIRGDI.
             float3 dir;
             float distance;
             float3 Li;
-            bool valid = gRTXDI.getFinalSample(pixel, dir, distance, Li);
+            bool valid = gRESTIRGDI.getFinalSample(pixel, dir, distance, Li);
 
             // Check light visibility.
             if (valid)
@@ -97,7 +97,7 @@ struct FinalShading
             float3 specular = {};
             if (valid)
             {
-                TinyUniformSampleGenerator sg = TinyUniformSampleGenerator(pixel, gRTXDI.frameIndex);
+                TinyUniformSampleGenerator sg = TinyUniformSampleGenerator(pixel, gRESTIRGDI.frameIndex);
 
                 sd.mtl.setActiveLobes((uint)LobeType::DiffuseReflection);
                 diffuse = mi.eval(sd, dir, sg) * Li;
@@ -111,7 +111,7 @@ struct FinalShading
             emission = bsdfProperties.emission;
             color = diffuse + specular + emission;
 
-            // RTXDI uses a simple material model with only diffuse and specular reflection lobes.
+            // ReSTIRGDI uses a simple material model with only diffuse and specular reflection lobes.
             // We query the BSDF for the respective albedos and use them for demodulation below.
 
             // Demodulate diffuse reflectance (albedo) from diffuse color.

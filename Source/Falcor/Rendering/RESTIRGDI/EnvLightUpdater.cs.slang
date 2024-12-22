@@ -25,59 +25,46 @@
  # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  **************************************************************************/
-import LoadShadingData;
+#include "Utils/Math/MathConstants.slangh"
+
+import Scene.Scene;
 import Utils.Color.ColorHelpers;
-import Rendering.ReSTIRGDI.ReSTIRGDI;
 
-/**
- * Prepares ReSTIRGDI surface data.
- */
-struct PrepareSurfaceData
+/** Update the env light luminance and PDF textures by sampling the scene's env map.
+*/
+struct EnvLightUpdater
 {
-    Texture2D<PackedHitInfo> vbuffer;
-    Texture2D<float2> texGrads;
+    RWTexture2D<float> envLightLuminance;
+    RWTexture2D<float> envLightPdf;
 
-    uint2 frameDim;
+    uint2 texDim;
 
-    void execute(const uint2 pixel)
+    void execute(uint2 texelID)
     {
-        if (any(pixel >= frameDim))
-            return;
+        if (any(texelID >= texDim)) return;
 
-        ShadingData sd;
-        bool isValidSurface = loadShadingData(pixel, frameDim, gScene.camera, vbuffer, sd);
+        // Compute UV coordinates in env map.
+        float2 uv = (texelID + float2(0.5f)) / texDim;
 
-        if (isValidSurface)
-        {
-            // Create material instance and query its properties.
-            let lod = ExplicitLodTextureSampler(0.f); // TODO: Implement texture level-of-detail.
-            let hints = getMaterialInstanceHints();
-            let mi = gScene.materials.getMaterialInstance(sd, lod, hints);
-            let bsdfProperties = mi.getProperties(sd);
+        // Evaluate the env map luminance.
+        float L = max(0.f, luminance(gScene.envMap.eval(uv)));
 
-            // ReSTIRGDI uses a simple material model with only diffuse and specular reflection lobes.
-            // We query the BSDF for the diffuse albedo and specular reflectance, and use their luminances as weights.
-            // Note: Final shading uses the full material model, the simplified model is only used for resampling purposes.
-            gRESTIRGDI.setSurfaceData(
-                pixel,
-                sd.computeRayOrigin(),
-                bsdfProperties.guideNormal,
-                bsdfProperties.diffuseReflectionAlbedo,
-                bsdfProperties.specularReflectance,
-                bsdfProperties.roughness
-            );
-        }
-        else
-        {
-            gRESTIRGDI.setInvalidSurfaceData(pixel);
-        }
+        // Write luminance.
+        envLightLuminance[texelID] = L;
+
+        // Compute relative solid angle to account for compression at the poles.
+        float elevation = (((float(texelID.y) + 0.5f) / float(texDim.y)) - 0.5f) * M_PI;
+        float relativeSolidAngle = cos(elevation);
+
+        // Write PDF.
+        envLightPdf[texelID] = relativeSolidAngle * L;
     }
 };
 
-ParameterBlock<PrepareSurfaceData> gPrepareSurfaceData;
+ParameterBlock<EnvLightUpdater> gEnvLightUpdater;
 
 [numthreads(16, 16, 1)]
-void main(uint3 dispatchThreadId: SV_DispatchThreadID)
+void main(uint2 threadID : SV_DispatchThreadID)
 {
-    gPrepareSurfaceData.execute(dispatchThreadId.xy);
+    gEnvLightUpdater.execute(threadID);
 }
