@@ -190,6 +190,7 @@ private:
 
 struct MSE
 {
+    double grayMean = 0.0;
     double operator()(const float* a, const float* b, size_t count) const
     {
         double error = 0.0;
@@ -201,6 +202,7 @@ struct MSE
 
 struct RMSE
 {
+    double grayMean = 0.0;
     double operator()(const float* a, const float* b, size_t count) const
     {
         double error = 0.0;
@@ -212,6 +214,7 @@ struct RMSE
 
 struct MAE
 {
+    double grayMean = 0.0;
     double operator()(const float* a, const float* b, size_t count) const
     {
         double error = 0.0;
@@ -223,14 +226,34 @@ struct MAE
 
 struct MAPE
 {
+    double grayMean = 0.0;
     double operator()(const float* a, const float* b, size_t count) const
     {
         double error = 0.0;
+        double gray = 0.0;
         for (size_t i = 0; i < count; ++i)
-            error += std::fabs((a[i] - b[i]) / (a[i] + 1e-3));
-        return 100.0 * error / count;
+            gray += a[i];
+        gray /= count;
+        for (size_t i = 0; i < count; ++i)
+            error += std::fabs((a[i] - b[i])) / (0.01 * grayMean + gray);
+        return error / count;
     }
 };
+
+double getGrayMean(const float* a, size_t count, size_t colorCount) {
+    double grayMean = 0.0;
+    double gray = 0.0;
+    for (size_t i = 0; i < count; ++i)
+    {
+        gray = 0.0;
+        for (size_t j = 0; j < colorCount; ++j)
+            gray += a[i*4 + j];
+        gray /= colorCount;
+        grayMean += gray;
+    }
+    grayMean /= count;
+    return grayMean;
+}
 
 template<typename Metric>
 double compare(const Image& imageA, const Image& imageB, bool alpha, float* errorMap)
@@ -240,6 +263,7 @@ double compare(const Image& imageA, const Image& imageB, bool alpha, float* erro
     const float* a = imageA.getData();
     const float* b = imageB.getData();
     size_t count = imageA.getWidth() * imageA.getHeight();
+    metric.grayMean = getGrayMean(a, count, alpha ? 4 : 3);
     for (size_t i = 0; i < count; ++i)
     {
         double error = metric(a, b, alpha ? 4 : 3);
