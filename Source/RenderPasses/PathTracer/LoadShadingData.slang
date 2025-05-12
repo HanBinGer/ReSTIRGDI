@@ -119,6 +119,8 @@ uint getMaterialInstanceHints(const HitInfo hit, const bool isPrimary)
 #else
         if (kAdjustShadingNormals && !isPrimary) hints |= (uint)MaterialInstanceHints::AdjustShadingNormal;
 #endif
+
+        if (!kUseNormalMapping) hints |= (uint)MaterialInstanceHints::DisableNormalMapping;
     }
     return hints;
 }

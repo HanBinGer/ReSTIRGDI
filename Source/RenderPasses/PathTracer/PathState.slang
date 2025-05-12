@@ -81,7 +81,7 @@ enum class BounceType
 */
 struct PathState
 {
-    uint        id;                     ///< Path ID encodes (pixel, sampleIdx) with 12 bits each for pixel x|y and 8 bits for sample index.
+    uint2        id;                     ///< Path ID encodes (pixel, sampleIdx) with 12 bits each for pixel x|y and 8 bits for sample index.
 
     uint        flagsAndVertexIndex;    ///< Higher kPathFlagsBitCount bits: Flags indicating the current status. This can be multiple PathFlags flags OR'ed together.
                                         ///< Lower kVertexIndexBitCount bits: Current vertex index (0 = camera, 1 = primary hit, 2 = secondary hit, etc.).
@@ -185,8 +185,9 @@ struct PathState
         bounceCounters += (1 << shift);
     }
 
-    uint2 getPixel() { return uint2(id, id >> 12) & 0xfff; }
-    uint getSampleIdx() { return id >> 24; }
+    uint2 getPixel() { return uint2(id.x, id.x >> 12) & 0xfff; }
+    uint getSampleIdx() { return id.x >> 24; }
+    uint getRestirPassIdx() { return id.y & 0xff; }
 
     // Unsafe - assumes that index is small enough.
     [mutating] void setVertexIndex(uint index)

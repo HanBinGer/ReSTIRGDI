@@ -29,6 +29,7 @@
 #include "RenderGraph/RenderPassHelpers.h"
 #include "RenderGraph/RenderPassStandardFlags.h"
 #include "Rendering/Lights/EmissiveUniformSampler.h"
+#include "Utils/Math/MathConstants.slangh"
 
 namespace
 {
@@ -41,6 +42,7 @@ namespace
     const std::string kInputVBuffer = "vbuffer";
     const std::string kInputMotionVectors = "mvec";
     const std::string kInputViewDir = "viewW";
+    const std::string kInputDepth = "depth";
     const std::string kInputSampleCount = "sampleCount";
 
     const Falcor::ChannelList kInputChannels =
@@ -48,6 +50,7 @@ namespace
         { kInputVBuffer,        "gVBuffer",         "Visibility buffer in packed format" },
         { kInputMotionVectors,  "gMotionVectors",   "Motion vector buffer (float format)", true /* optional */ },
         { kInputViewDir,        "gViewW",           "World-space view direction (xyz float format)", true /* optional */ },
+        { kInputDepth,        "gDepth", "Depth buffer (NDC)", true, ResourceFormat::R32Float },
         { kInputSampleCount,    "gSampleCount",     "Sample count buffer (integer format)", true /* optional */, ResourceFormat::R8Uint },
     };
 
@@ -59,6 +62,8 @@ namespace
     const std::string kOutputReflectionPosW = "reflectionPosW";
     const std::string kOutputRayCount = "rayCount";
     const std::string kOutputPathLength = "pathLength";
+    const std::string kOutputDebugTex = "debugTex";
+
     const std::string kOutputNRDDiffuseRadianceHitDist = "nrdDiffuseRadianceHitDist";
     const std::string kOutputNRDSpecularRadianceHitDist = "nrdSpecularRadianceHitDist";
     const std::string kOutputNRDEmission = "nrdEmission";
@@ -88,6 +93,8 @@ namespace
         { kOutputReflectionPosW,                            "",     "Output reflection pos (world space)", true /* optional */, ResourceFormat::RGBA32Float },
         { kOutputRayCount,                                  "",     "Per-pixel ray count", true /* optional */, ResourceFormat::R32Uint },
         { kOutputPathLength,                                "",     "Per-pixel path length", true /* optional */, ResourceFormat::R32Uint },
+        { kOutputDebugTex,                                "",     "debug texture for ReSTIR", true /* optional */, ResourceFormat::RGBA32Float },
+
         // NRD outputs
         { kOutputNRDDiffuseRadianceHitDist,                 "",     "Output demodulated diffuse color (linear) and hit distance", true /* optional */, ResourceFormat::RGBA32Float },
         { kOutputNRDSpecularRadianceHitDist,                "",     "Output demodulated specular color (linear) and hit distance", true /* optional */, ResourceFormat::RGBA32Float },
@@ -126,10 +133,12 @@ namespace
     const std::string kMISPowerExponent = "misPowerExponent";
     const std::string kEmissiveSampler = "emissiveSampler";
     const std::string kLightBVHOptions = "lightBVHOptions";
-    const std::string kUseRTXDI = "useRTXDI";
-    const std::string kRTXDIOptions = "RTXDIOptions";
+    const std::string kUseReSTIR = "useReSTIR";
+    const std::string kReSTIRGDIOptions = "ReSTIRGDIOptions";
+
 
     const std::string kUseAlphaTest = "useAlphaTest";
+    const std::string kUseNormalMapping = "useNormalMapping";
     const std::string kAdjustShadingNormals = "adjustShadingNormals";
     const std::string kMaxNestedMaterials = "maxNestedMaterials";
     const std::string kUseLightsInDielectricVolumes = "useLightsInDielectricVolumes";
@@ -201,8 +210,6 @@ void PathTracer::setProperties(const Properties& props)
     validateOptions();
     if (auto lightBVHSampler = dynamic_cast<LightBVHSampler*>(mpEmissiveSampler.get()))
         lightBVHSampler->setOptions(mLightBVHOptions);
-    if (mpRTXDI)
-        mpRTXDI->setOptions(mRTXDIOptions);
     mRecompile = true;
     mOptionsChanged = true;
 }
@@ -229,11 +236,13 @@ void PathTracer::parseProperties(const Properties& props)
         else if (key == kMISPowerExponent) mStaticParams.misPowerExponent = value;
         else if (key == kEmissiveSampler) mStaticParams.emissiveSampler = value;
         else if (key == kLightBVHOptions) mLightBVHOptions = value;
-        else if (key == kUseRTXDI) mStaticParams.useRTXDI = value;
-        else if (key == kRTXDIOptions) mRTXDIOptions = value;
+        else if (key == kUseReSTIR) mStaticParams.useReSTIR = value;
+        else if (key == kReSTIRGDIOptions) mReSTIRGDIOptions = value;
+
 
         // Material parameters
         else if (key == kUseAlphaTest) mStaticParams.useAlphaTest = value;
+        else if (key == kUseNormalMapping) mStaticParams.useNormalMapping = value;
         else if (key == kAdjustShadingNormals) mStaticParams.adjustShadingNormals = value;
         else if (key == kMaxNestedMaterials) mStaticParams.maxNestedMaterials = value;
         else if (key == kUseLightsInDielectricVolumes) mStaticParams.useLightsInDielectricVolumes = value;
@@ -354,11 +363,12 @@ Properties PathTracer::getProperties() const
     props[kMISPowerExponent] = mStaticParams.misPowerExponent;
     props[kEmissiveSampler] = mStaticParams.emissiveSampler;
     if (mStaticParams.emissiveSampler == EmissiveLightSamplerType::LightBVH) props[kLightBVHOptions] = mLightBVHOptions;
-    props[kUseRTXDI] = mStaticParams.useRTXDI;
-    props[kRTXDIOptions] = mRTXDIOptions;
+    props[kUseReSTIR] = mStaticParams.useReSTIR;
+    props[kReSTIRGDIOptions] = mReSTIRGDIOptions;
 
     // Material parameters
     props[kUseAlphaTest] = mStaticParams.useAlphaTest;
+    props[kUseNormalMapping] = mStaticParams.useNormalMapping;
     props[kAdjustShadingNormals] = mStaticParams.adjustShadingNormals;
     props[kMaxNestedMaterials] = mStaticParams.maxNestedMaterials;
     props[kUseLightsInDielectricVolumes] = mStaticParams.useLightsInDielectricVolumes;
@@ -421,7 +431,7 @@ void PathTracer::setScene(RenderContext* pRenderContext, const ref<Scene>& pScen
     mParams.screenTiles = {};
 
     // Need to recreate the RTXDI module when the scene changes.
-    mpRTXDI = nullptr;
+    mpReSTIRGDI = nullptr;
 
     resetPrograms();
     resetLighting();
@@ -454,11 +464,13 @@ void PathTracer::execute(RenderContext* pRenderContext, const RenderData& render
     // Generate paths at primary hits.
     generatePaths(pRenderContext, renderData);
 
-    // Update RTXDI.
-    if (mpRTXDI)
+    // Update ReSTIRGDI.
+    if (mpReSTIRGDI)
     {
         const auto& pMotionVectors = renderData.getTexture(kInputMotionVectors);
-        mpRTXDI->update(pRenderContext, pMotionVectors);
+        const auto& pViewDir = renderData.getTexture(kInputViewDir);
+
+        mpReSTIRGDI->updateReSTIRDI(pRenderContext, pMotionVectors, pViewDir);
     }
 
     // Trace pass.
@@ -510,6 +522,8 @@ bool PathTracer::renderRenderingUI(Gui::Widgets& widget)
     widget.tooltip("Number of samples per pixel. One path is traced for each sample.\n\n"
         "When the '" + kInputSampleCount + "' input is connected, the number of samples per pixel is loaded from the texture.");
 
+    dirty |= widget.checkbox("Use Gaussian Filter", mParams.useGaussianFilter);
+
     if (widget.var("Max surface bounces", mStaticParams.maxSurfaceBounces, 0u, kMaxBounces))
     {
         // Allow users to change the max surface bounce parameter in the UI to clamp all other surface bounce parameters.
@@ -529,6 +543,8 @@ bool PathTracer::renderRenderingUI(Gui::Widgets& widget)
 
     dirty |= widget.var("Max transmission bounces", mStaticParams.maxTransmissionBounces, 0u, kMaxBounces);
     widget.tooltip("Maximum number of transmission bounces.\n0 = no transmission\n1 = one transmission bounce etc.");
+
+    dirty |= widget.checkbox("Use View Direction from GBuffer", mStaticParams.useViewDir);
 
     // Sampling options.
 
@@ -583,17 +599,19 @@ bool PathTracer::renderRenderingUI(Gui::Widgets& widget)
         }
     }
 
-    if (auto group = widget.group("RTXDI"))
+    if (auto group = widget.group("ReSTIR GDI", true))
     {
-        dirty |= widget.checkbox("Enabled", mStaticParams.useRTXDI);
-        widget.tooltip("Use RTXDI for direct illumination.");
-        if (mpRTXDI) dirty |= mpRTXDI->renderUI(group);
+        dirty |= widget.checkbox("Enabled", mStaticParams.useReSTIR);
+        widget.tooltip("Use ReSTIR for direct illumination.");
+        if (mStaticParams.useReSTIR && mpReSTIRGDI) dirty |= mpReSTIRGDI->renderUI(group);
     }
 
     if (auto group = widget.group("Material controls"))
     {
         dirty |= widget.checkbox("Alpha test", mStaticParams.useAlphaTest);
         widget.tooltip("Use alpha testing on non-opaque triangles.");
+
+        dirty |= widget.checkbox("Use normal mapping", mStaticParams.useNormalMapping);
 
         dirty |= widget.checkbox("Adjust shading normals on secondary hits", mStaticParams.adjustShadingNormals);
         widget.tooltip("Enables adjustment of the shading normals to reduce the risk of black pixels due to back-facing vectors.\nDoes not apply to primary hits which is configured in GBuffer.", true);
@@ -663,6 +681,9 @@ bool PathTracer::renderDebugUI(Gui::Widgets& widget)
             dirty |= group.var("Seed", mParams.fixedSeed);
         }
 
+        group.text("Frame count = " + std::to_string(mParams.frameCount));
+        group.text("Seed = " + std::to_string(mParams.seed));
+
         mpPixelDebug->renderUI(group);
     }
 
@@ -680,7 +701,13 @@ void PathTracer::renderStatsUI(Gui::Widgets& widget)
 
 bool PathTracer::onMouseEvent(const MouseEvent& mouseEvent)
 {
+    if (mStaticParams.useReSTIR && mpReSTIRGDI) mpReSTIRGDI->getPixelDebug()->onMouseEvent(mouseEvent);
     return mpPixelDebug->onMouseEvent(mouseEvent);
+}
+
+bool PathTracer::onKeyEvent(const KeyboardEvent& keyEvent)
+{
+    return mpReSTIRGDI->onKeyEvents(keyEvent);
 }
 
 void PathTracer::reset()
@@ -871,7 +898,7 @@ void PathTracer::prepareResources(RenderContext* pRenderContext, const RenderDat
 
     // Allocate per-sample buffers.
     // For the special case of fixed 1 spp, the output is written out directly and this buffer is not needed.
-    if (!mFixedSampleCount || mStaticParams.samplesPerPixel > 1)
+    if (!mFixedSampleCount || mStaticParams.samplesPerPixel > 1 || mParams.useGaussianFilter)
     {
         if (!mpSampleColor || mpSampleColor->getElementCount() < sampleCount || mVarsChanged)
         {
@@ -1038,21 +1065,31 @@ bool PathTracer::prepareLighting(RenderContext* pRenderContext)
     return lightingChanged;
 }
 
-void PathTracer::prepareRTXDI(RenderContext* pRenderContext)
+void PathTracer::prepareReSTIRGDI(RenderContext* pRenderContext, const RenderData& renderData)
 {
-    if (mStaticParams.useRTXDI)
+    if (mStaticParams.useReSTIR)
     {
-        if (!mpRTXDI) mpRTXDI = std::make_unique<RTXDI>(mpScene, mRTXDIOptions);
+        auto flags = renderData.getDictionary().getValue(kRenderPassRefreshFlags, RenderPassRefreshFlags::None);
+        auto ownerDefines = mStaticParams.getDefines(*this);
+        if (!mpReSTIRGDI)
+        {
+            mpReSTIRGDI = std::make_unique<ReSTIRGDI>(mpScene, mReSTIRGDIOptions, ownerDefines);
+        }
 
         // Emit warning if enabled while using spp != 1.
         if (!mFixedSampleCount || mStaticParams.samplesPerPixel != 1)
         {
-            logWarning("Using RTXDI with samples/pixel != 1 will only generate one RTXDI sample reused for all pixel samples.");
+            logWarning("Using ReSTIRGDI with samples/pixel != 1 will only generate one ReSTIRGDI sample reused for all pixel samples.");
         }
+
+        FALCOR_ASSERT(mpReSTIRGDI != nullptr);
+
+        // Set owner defines to ReSTIR
+        mpReSTIRGDI->setOwnerDefines(mStaticParams.getDefines(*this));
     }
     else
     {
-        mpRTXDI = nullptr;
+        mpReSTIRGDI = nullptr;
     }
 }
 
@@ -1094,7 +1131,7 @@ void PathTracer::bindShaderData(const ShaderVar& var, const RenderData& renderDa
     setNRDData(var["outputNRD"], renderData);
 
     ref<Texture> pViewDir;
-    if (mpScene->getCamera()->getApertureRadius() > 0.f)
+    if (mStaticParams.useViewDir)
     {
         pViewDir = renderData.getTexture(kInputViewDir);
         if (!pViewDir) logWarning("Depth-of-field requires the '{}' input. Expect incorrect rendering.", kInputViewDir);
@@ -1124,6 +1161,21 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
 {
     const auto& pOutputColor = renderData.getTexture(kOutputColor);
     FALCOR_ASSERT(pOutputColor);
+
+    auto& dict = renderData.getDictionary();
+
+    // Compute Gaussian filter parameters
+    if (dict.keyExists("filterRadius") && dict.keyExists("filterAlpha"))
+    {
+        mParams.filterRadius = dict["filterRadius"];
+        mParams.filterAlpha = dict["filterAlpha"];
+        // compute filter norm for gaussian
+        double a = mParams.filterAlpha;
+        double r = mParams.filterRadius;
+        double result = (exp(-2.0 * a * r * r) * pow(-2 * sqrt(a) * r + exp(a * r * r) * sqrt(M_PI) * erf(sqrt(a) * r), 2.0)) / a;
+        mParams.filterNorm = (float)result;
+    }
+
 
     // Set output frame dimension.
     setFrameDim(uint2(pOutputColor->getWidth(), pOutputColor->getHeight()));
@@ -1155,7 +1207,6 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
         // This is needed to ensure other passes get notified when the path tracer is enabled/disabled.
         if (mOptionsChanged)
         {
-            auto& dict = renderData.getDictionary();
             auto flags = dict.getValue(kRenderPassRefreshFlags, Falcor::RenderPassRefreshFlags::None);
             if (mOptionsChanged) flags |= Falcor::RenderPassRefreshFlags::RenderOptionsChanged;
             dict[Falcor::kRenderPassRefreshFlags] = flags;
@@ -1170,12 +1221,11 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
     // Update the env map and emissive sampler to the current frame.
     bool lightingChanged = prepareLighting(pRenderContext);
 
-    // Prepare RTXDI.
-    prepareRTXDI(pRenderContext);
-    if (mpRTXDI) mpRTXDI->beginFrame(pRenderContext, mParams.frameDim);
+    // Update the random seed (before preparing ReSTIR). TODO: better implementation
+    mParams.seed = mParams.useFixedSeed ? mParams.fixedSeed : mParams.frameCount;
+    mParams.frameCount = mParams.useFixedSeed ? mParams.fixedSeed : mParams.frameCount;
 
     // Update refresh flag if changes that affect the output have occured.
-    auto& dict = renderData.getDictionary();
     if (mOptionsChanged || lightingChanged)
     {
         auto flags = dict.getValue(kRenderPassRefreshFlags, Falcor::RenderPassRefreshFlags::None);
@@ -1191,6 +1241,14 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
     {
         mGBufferAdjustShadingNormals = gbufferAdjustShadingNormals;
         mRecompile = true;
+    }
+
+    // prepare ReSTIR area reservoir. it has to be after mGBufferAdjustShadingNormals changed
+    prepareReSTIRGDI(pRenderContext, renderData);
+    if (mpReSTIRGDI)
+    {
+        mpReSTIRGDI->beginFrame(pRenderContext, mParams.frameDim, mParams.frameCount, mParams.filterRadius, mParams.filterAlpha,
+            mParams.filterNorm);
     }
 
     // Check if fixed sample count should be used. When the sample count input is connected we load the count from there instead.
@@ -1236,9 +1294,6 @@ bool PathTracer::beginFrame(RenderContext* pRenderContext, const RenderData& ren
     mpPixelStats->beginFrame(pRenderContext, mParams.frameDim);
     mpPixelDebug->beginFrame(pRenderContext, mParams.frameDim);
 
-    // Update the random seed.
-    mParams.seed = mParams.useFixedSeed ? mParams.fixedSeed : mParams.frameCount;
-
     return true;
 }
 
@@ -1266,7 +1321,13 @@ void PathTracer::endFrame(RenderContext* pRenderContext, const RenderData& rende
     copyTexture(renderData.getTexture(kOutputRayCount).get(), mpPixelStats->getRayCountTexture(pRenderContext).get());
     copyTexture(renderData.getTexture(kOutputPathLength).get(), mpPixelStats->getPathLengthTexture().get());
 
-    if (mpRTXDI) mpRTXDI->endFrame(pRenderContext);
+    // storing current frame data as previous
+    if (mpReSTIRGDI)
+    {
+        mReSTIRGDIOptions = mpReSTIRGDI->getOptions();
+        copyTexture(renderData.getTexture(kOutputDebugTex).get(), mpReSTIRGDI->getDebugOutputTexture().get());
+        mpReSTIRGDI->endFrame(pRenderContext);
+    }
 
     mVarsChanged = false;
     mParams.frameCount++;
@@ -1285,7 +1346,7 @@ void PathTracer::generatePaths(RenderContext* pRenderContext, const RenderData& 
     FALCOR_ASSERT(mpGeneratePaths->getThreadGroupSize().y == 1 && mpGeneratePaths->getThreadGroupSize().z == 1);
 
     // Additional specialization. This shouldn't change resource declarations.
-    mpGeneratePaths->addDefine("USE_VIEW_DIR", (mpScene->getCamera()->getApertureRadius() > 0 && renderData[kInputViewDir] != nullptr) ? "1" : "0");
+    mpGeneratePaths->addDefine("USE_VIEW_DIR", mStaticParams.useViewDir ? "1" : "0");
     mpGeneratePaths->addDefine("OUTPUT_GUIDE_DATA", mOutputGuideData ? "1" : "0");
     mpGeneratePaths->addDefine("OUTPUT_NRD_DATA", mOutputNRDData ? "1" : "0");
     mpGeneratePaths->addDefine("OUTPUT_NRD_ADDITIONAL_DATA", mOutputNRDAdditionalData ? "1" : "0");
@@ -1296,7 +1357,12 @@ void PathTracer::generatePaths(RenderContext* pRenderContext, const RenderData& 
 
     mpScene->bindShaderData(mpGeneratePaths->getRootVar()["gScene"]);
 
-    if (mpRTXDI) mpRTXDI->bindShaderData(mpGeneratePaths->getRootVar());
+    if (mStaticParams.useReSTIR && mpReSTIRGDI)
+    {
+        mpReSTIRGDI->setShaderData(var["restirGdi"]);
+    }
+
+    mpPixelDebug->prepareProgram(mpGeneratePaths->getProgram(), mpGeneratePaths->getRootVar());
 
     // Launch one thread per pixel.
     // The dimensions are padded to whole tiles to allow re-indexing the threads in the shader.
@@ -1320,7 +1386,6 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
     mpScene->setRaytracingShaderData(pRenderContext, var);
 
     if (mVarsChanged) mpSampleGenerator->bindShaderData(var);
-    if (mpRTXDI) mpRTXDI->bindShaderData(var);
 
     mpPixelStats->prepareProgram(tracePass.pProgram, var);
     mpPixelDebug->prepareProgram(tracePass.pProgram, var);
@@ -1328,13 +1393,18 @@ void PathTracer::tracePass(RenderContext* pRenderContext, const RenderData& rend
     // Bind the path tracer.
     var["gPathTracer"] = mpPathTracerBlock;
 
+    if (mpReSTIRGDI)
+    {
+        mpReSTIRGDI->setShaderData(var["gPathTracer"]["restirGdi"]);
+    }
+
     // Full screen dispatch.
     mpScene->raytrace(pRenderContext, tracePass.pProgram.get(), tracePass.pVars, uint3(mParams.frameDim, 1));
 }
 
 void PathTracer::resolvePass(RenderContext* pRenderContext, const RenderData& renderData)
 {
-    if (!mOutputGuideData && !mOutputNRDData && mFixedSampleCount && mStaticParams.samplesPerPixel == 1) return;
+    if (!mOutputGuideData && !mOutputNRDData && mFixedSampleCount && mStaticParams.samplesPerPixel == 1 && !mParams.useGaussianFilter) return;
 
     FALCOR_PROFILE(pRenderContext, "resolvePass");
 
@@ -1363,6 +1433,11 @@ void PathTracer::resolvePass(RenderContext* pRenderContext, const RenderData& re
     var["outputNRDDeltaReflectionRadianceHitDist"] = renderData.getTexture(kOutputNRDDeltaReflectionRadianceHitDist);
     var["outputNRDDeltaTransmissionRadianceHitDist"] = renderData.getTexture(kOutputNRDDeltaTransmissionRadianceHitDist);
     var["outputNRDResidualRadianceHitDist"] = renderData.getTexture(kOutputNRDResidualRadianceHitDist);
+
+    if (mStaticParams.useReSTIR && mpReSTIRGDI)
+    {
+        mpReSTIRGDI->setShaderData(var["restirGdi"]);
+    }
 
     if (mVarsChanged)
     {
@@ -1393,11 +1468,12 @@ DefineList PathTracer::StaticParams::getDefines(const PathTracer& owner) const
     defines.add("MAX_SPECULAR_BOUNCES", std::to_string(maxSpecularBounces));
     defines.add("MAX_TRANSMISSON_BOUNCES", std::to_string(maxTransmissionBounces));
     defines.add("ADJUST_SHADING_NORMALS", adjustShadingNormals ? "1" : "0");
+    defines.add("USE_NORMAL_MAPPING", useNormalMapping ? "1" : "0");
     defines.add("USE_BSDF_SAMPLING", useBSDFSampling ? "1" : "0");
     defines.add("USE_NEE", useNEE ? "1" : "0");
     defines.add("USE_MIS", useMIS ? "1" : "0");
     defines.add("USE_RUSSIAN_ROULETTE", useRussianRoulette ? "1" : "0");
-    defines.add("USE_RTXDI", useRTXDI ? "1" : "0");
+    defines.add("USE_SCREEN_SPACE_RESTIR", useReSTIR ? "1" : "0");
     defines.add("USE_ALPHA_TEST", useAlphaTest ? "1" : "0");
     defines.add("USE_LIGHTS_IN_DIELECTRIC_VOLUMES", useLightsInDielectricVolumes ? "1" : "0");
     defines.add("DISABLE_CAUSTICS", disableCaustics ? "1" : "0");
@@ -1413,7 +1489,7 @@ DefineList PathTracer::StaticParams::getDefines(const PathTracer& owner) const
     defines.add(owner.mpSampleGenerator->getDefines());
 
     if (owner.mpEmissiveSampler) defines.add(owner.mpEmissiveSampler->getDefines());
-    if (owner.mpRTXDI) defines.add(owner.mpRTXDI->getDefines());
+    if (owner.mpReSTIRGDI) defines.add(owner.mpReSTIRGDI->getDefines());
 
     defines.add("INTERIOR_LIST_SLOT_COUNT", std::to_string(maxNestedMaterials));
 
@@ -1430,7 +1506,7 @@ DefineList PathTracer::StaticParams::getDefines(const PathTracer& owner) const
     defines.add("USE_HAIR_MATERIAL", scene && scene->getMaterialCountByType(MaterialType::Hair) > 0u ? "1" : "0");
 
     // Set default (off) values for additional features.
-    defines.add("USE_VIEW_DIR", "0");
+    defines.add("USE_VIEW_DIR", useViewDir ? "1" : "0");
     defines.add("OUTPUT_GUIDE_DATA", "0");
     defines.add("OUTPUT_NRD_DATA", "0");
     defines.add("OUTPUT_NRD_ADDITIONAL_DATA", "0");

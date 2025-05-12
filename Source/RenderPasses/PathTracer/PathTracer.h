@@ -36,9 +36,10 @@
 #include "Rendering/Lights/EnvMapSampler.h"
 #include "Rendering/Materials/TexLODTypes.slang"
 #include "Rendering/Utils/PixelStats.h"
-#include "Rendering/RTXDI/RTXDI.h"
 
 #include "Params.slang"
+
+#include "../Modules/ReSTIRGDI/ReSTIRGDI.h"
 
 using namespace Falcor;
 
@@ -60,7 +61,7 @@ public:
     virtual void execute(RenderContext* pRenderContext, const RenderData& renderData) override;
     virtual void renderUI(Gui::Widgets& widget) override;
     virtual bool onMouseEvent(const MouseEvent& mouseEvent) override;
-    virtual bool onKeyEvent(const KeyboardEvent& keyEvent) override { return false; }
+    virtual bool onKeyEvent(const KeyboardEvent& keyEvent) override;
 
     PixelStats& getPixelStats() { return *mpPixelStats; }
 
@@ -91,7 +92,7 @@ private:
     void resetLighting();
     void prepareMaterials(RenderContext* pRenderContext);
     bool prepareLighting(RenderContext* pRenderContext);
-    void prepareRTXDI(RenderContext* pRenderContext);
+    void prepareReSTIRGDI(RenderContext* pRenderContext, const RenderData& renderData);
     void setNRDData(const ShaderVar& var, const RenderData& renderData) const;
     void bindShaderData(const ShaderVar& var, const RenderData& renderData, bool useLightSampling = true) const;
     bool renderRenderingUI(Gui::Widgets& widget);
@@ -110,9 +111,11 @@ private:
         // Rendering parameters
         uint32_t    samplesPerPixel = 1;                        ///< Number of samples (paths) per pixel, unless a sample density map is used.
         uint32_t    maxSurfaceBounces = 0;                      ///< Max number of surface bounces (diffuse + specular + transmission), up to kMaxPathLenth. This will be initialized at startup.
-        uint32_t    maxDiffuseBounces = 3;                      ///< Max number of diffuse bounces (0 = direct only), up to kMaxBounces.
-        uint32_t    maxSpecularBounces = 3;                     ///< Max number of specular bounces (0 = direct only), up to kMaxBounces.
-        uint32_t    maxTransmissionBounces = 10;                ///< Max number of transmission bounces (0 = none), up to kMaxBounces.
+        uint32_t    maxDiffuseBounces = 0;                      ///< Max number of diffuse bounces (0 = direct only), up to kMaxBounces.
+        uint32_t    maxSpecularBounces = 0;                     ///< Max number of specular bounces (0 = direct only), up to kMaxBounces.
+        uint32_t    maxTransmissionBounces = 0;                ///< Max number of transmission bounces (0 = none), up to kMaxBounces.
+        bool        useViewDir = true;
+
 
         // Sampling parameters
         uint32_t    sampleGenerator = SAMPLE_GENERATOR_TINY_UNIFORM; ///< Pseudorandom sample generator type.
@@ -123,10 +126,11 @@ private:
         MISHeuristic misHeuristic = MISHeuristic::Balance;      ///< MIS heuristic.
         float       misPowerExponent = 2.f;                     ///< MIS exponent for the power heuristic. This is only used when 'PowerExp' is chosen.
         EmissiveLightSamplerType emissiveSampler = EmissiveLightSamplerType::LightBVH;  ///< Emissive light sampler to use for NEE.
-        bool        useRTXDI = false;                           ///< Use RTXDI for direct illumination.
+        bool        useReSTIR = false;               ///< Use ReSTIR for direct illumination.
 
         // Material parameters
         bool        useAlphaTest = true;                        ///< Use alpha testing on non-opaque triangles.
+        bool        useNormalMapping = true;
         bool        adjustShadingNormals = false;               ///< Adjust shading normals on secondary hits.
         uint32_t    maxNestedMaterials = 2;                     ///< Maximum supported number of nested materials.
         bool        useLightsInDielectricVolumes = false;       ///< Use lights inside of volumes (transmissive materials). We typically don't want this because lights are occluded by the interface.
@@ -134,7 +138,7 @@ private:
         TexLODMode  primaryLodMode = TexLODMode::Mip0;          ///< Use filtered texture lookups at the primary hit.
 
         // Scheduling parameters
-        bool        useSER = true;                              ///< Enable SER (Shader Execution Reordering).
+        bool        useSER = false;                              ///< Enable SER (Shader Execution Reordering).
 
         // Output parameters
         ColorFormat colorFormat = ColorFormat::LogLuvHDR;       ///< Color format used for internal per-sample color and denoiser buffers.
@@ -149,7 +153,7 @@ private:
     PathTracerParams                mParams;                    ///< Runtime path tracer parameters.
     StaticParams                    mStaticParams;              ///< Static parameters. These are set as compile-time constants in the shaders.
     mutable LightBVHSampler::Options mLightBVHOptions;          ///< Current options for the light BVH sampler.
-    RTXDI::Options                  mRTXDIOptions;              ///< Current options for the RTXDI sampler.
+    ReSTIRGDI::Options              mReSTIRGDIOptions;
 
     bool                            mEnabled = true;            ///< Switch to enable/disable the path tracer. When disabled the pass outputs are cleared.
     RenderPassHelpers::IOSize       mOutputSizeSelection = RenderPassHelpers::IOSize::Default;  ///< Selected output size.
@@ -162,7 +166,7 @@ private:
     ref<SampleGenerator>            mpSampleGenerator;          ///< GPU pseudo-random sample generator.
     std::unique_ptr<EnvMapSampler>  mpEnvMapSampler;            ///< Environment map sampler or nullptr if not used.
     std::unique_ptr<EmissiveLightSampler> mpEmissiveSampler;    ///< Emissive light sampler or nullptr if not used.
-    std::unique_ptr<RTXDI>          mpRTXDI;                    ///< RTXDI sampler for direct illumination or nullptr if not used.
+    std::unique_ptr<ReSTIRGDI> mpReSTIRGDI;     ///< ReSTIRGDI sampler for direct illumination or nullptr if not used.
     std::unique_ptr<PixelStats>     mpPixelStats;               ///< Utility class for collecting pixel stats.
     std::unique_ptr<PixelDebug>     mpPixelDebug;               ///< Utility class for pixel debugging (print in shaders).
 

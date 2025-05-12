@@ -29,6 +29,8 @@ import RenderPasses.Shared.Denoising.NRDData;
 import ColorType;
 import GuideData;
 import Params;
+import Modules.ReSTIRGDI.ReSTIRGDI;
+#include "Utils/Math/MathConstants.slangh"
 
 /** Compute shader implementing a sample resolve pass.
 
@@ -41,6 +43,8 @@ struct ResolvePass
 {
     // Resources
     PathTracerParams params;                                ///< Runtime parameters.
+
+    ReSTIRGDI restirGdi;
 
     StructuredBuffer<ColorType>   sampleColor;              ///< Input per-sample color if kSamplesPerPixel != 1.
     StructuredBuffer<GuideData>   sampleGuideData;          ///< Input per-sample guide data. Only valid if kOutputGuideData == true.
@@ -71,6 +75,27 @@ struct ResolvePass
     static const bool kOutputGuideData = OUTPUT_GUIDE_DATA;
     static const bool kOutputNRDData = OUTPUT_NRD_DATA;
 
+    float Gaussian(float d, float expv, float alpha = 2.f) {
+        return max((float)0, float(exp(-alpha * d * d) - expv));
+    }
+
+    float Mitchell1D(float x, float B = 1.f / 3.f, float  C = 1.f/3.f)  {
+        x = abs(2 * x);
+        if (x > 1)
+            return ((-B - 6 * C) * x * x * x + (6 * B + 30 * C) * x * x +
+                    (-12 * B - 48 * C) * x + (8 * B + 24 * C)) *
+                   (1.f / 6.f);
+        else
+            return ((12 - 9 * B - 6 * C) * x * x * x +
+                    (-18 + 12 * B + 6 * C) * x * x + (6 - 2 * B)) *
+                   (1.f / 6.f);
+    }
+
+    float Triangle(float x, float radius)
+    {
+        return max(0, radius - abs(x));
+    }
+
     /** Entry point for resolve pass.
         \param[in] pixel Pixel coordinates.
     */
@@ -86,6 +111,42 @@ struct ResolvePass
         // TODO: We may want to use a nearest sampler to allow the texture to be of arbitrary dimension.
         const uint spp = kSamplesPerPixel > 0 ? kSamplesPerPixel : min(sampleCount[pixel], kMaxSamplesPerPixel);
         const float invSpp = spp > 0 ? 1.f / spp : 1.f; // Setting invSpp to 1.0 if we have no samples to avoid NaNs below.
+
+        // assuming a maximum filter radius of 2
+        // can add pixel filters here 5x5 pixels
+
+        if (kSamplesPerPixel == 1 && params.useGaussianFilter)
+        {
+            float filterRadius = 2;
+            float filterAlpha = 2.f;
+            float expX = exp(-filterAlpha * filterRadius * filterRadius);
+            int searchRadius = int(filterRadius + 0.5);
+
+            float sumH = 0.f;
+            float3 sum = 0.f;
+            for (int i = -searchRadius; i <= searchRadius; i++)
+            {
+                for (int j = -searchRadius; j <= searchRadius; j++)
+                {
+                    // look at pixels in radius
+                    int2 neighborPixel = pixel + int2(j, i);
+                    if (!all(neighborPixel >= 0 && neighborPixel < params.frameDim)) continue;
+                    float2 samplePos = float2(j, i) + restirGdi.getFinalSubPixelSample(neighborPixel, 0) - 0.5; // assuming only 1 ReSTIR pass and 1 reservoir per pixel
+                    if (dot(samplePos, samplePos) < filterRadius * filterRadius)
+                    {
+                        float h = Gaussian(samplePos.x, expX, filterAlpha) * Gaussian(samplePos.y, expX, filterAlpha);
+                        // float h = Mitchell1D(samplePos.x / filterRadius) * Mitchell1D(samplePos.y / filterRadius);
+                        //float h = Triangle(samplePos.x, filterRadius) * Triangle(samplePos.y, filterRadius);
+                        uint idx = params.getSampleOffset(neighborPixel, sampleOffset);
+                        sum += h * sampleColor[idx].get();
+                        sumH += h;
+                    }
+                }
+            }
+
+            sum = sumH == 0.f ? 0.f : abs(sum / sumH);
+            outputColor[pixel] = float4(sum, 1.f);
+        }
 
         // For the special case of fixed 1 spp output, the path tracer writes directly to the output color buffer.
         // In all other cases, we need to resolve the individual samples.

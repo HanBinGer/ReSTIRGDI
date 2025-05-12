@@ -64,7 +64,7 @@ static const uint2 kScreenTileDim = { 16, 16 };     ///< Screen-tile dimension i
 static const uint2 kScreenTileBits = { 4, 4 };      ///< Bits needed to describe pixel position within a screen-tile.
 
 // Define path configuration limits.
-static const uint kMaxSamplesPerPixel = 16;         ///< Maximum supported sample count. We can use tiling to support large sample counts if needed.
+static const uint kMaxSamplesPerPixel = 32;         ///< Maximum supported sample count. We can use tiling to support large sample counts if needed.
 static const uint kMaxFrameDimension = 4096;        ///< Maximum supported frame dimension in pixels along x or y. We can increase the bit allocation if needed.
 static const uint kMaxBounces = 254;                ///< Maximum supported number of bounces per bounce category (value 255 is reserved for internal use). The resulting path length may be longer than this.
 static const uint kMaxLightSamplesPerVertex = 8;    ///< Maximum number of shadow rays per path vertex for next-event estimation.
@@ -89,7 +89,15 @@ struct PathTracerParams
     uint2   screenTiles = { 0, 0 };     ///< Number of screen-tiles. Screen tiles may extend outside the frame.
 
     uint    frameCount = 0;             ///< Frames rendered. This is used as random seed.
-    uint    seed = 0;                   ///< Random seed. This will get updated from the host depending on settings.
+    uint seed = 0;                      ///< Random seed. This will get updated from the host depending on settings.
+
+    // Gaussain filter part
+    int     useGaussianFilter = false;
+    float   filterRadius = 0.5;
+    float   filterAlpha = 0.f;
+    float   filterNorm = 1;
+
+
     uint2   _pad0;
 
 #ifndef HOST_CODE

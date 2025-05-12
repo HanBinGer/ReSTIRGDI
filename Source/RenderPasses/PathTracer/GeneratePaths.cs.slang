@@ -27,8 +27,8 @@
  **************************************************************************/
 import Utils.Attributes;
 import Utils.Color.ColorHelpers;
+import Utils.Debug.PixelDebug;
 import Rendering.Lights.EnvMapSampler;
-import Rendering.RTXDI.RTXDI;
 import RenderPasses.Shared.Denoising.NRDBuffers;
 import RenderPasses.Shared.Denoising.NRDConstants;
 import LoadShadingData;
@@ -37,6 +37,8 @@ import PathTracer;
 import PathState;
 import ColorType;
 import Params;
+
+import Modules.ReSTIRGDI.ReSTIRGDI;
 
 // Shared memory variables.
 // TODO: Can we declare these inside PathGenerator?
@@ -69,8 +71,8 @@ struct PathGenerator
     PathTracerParams params;                        ///< Runtime parameters.
 
     Texture2D<PackedHitInfo> vbuffer;               ///< Fullscreen V-buffer for the primary hits.
-    Texture2D<float3> viewDir;                      ///< Optional view direction. Only valid when kUseViewDir == true.
-    Texture2D<uint> sampleCount;                    ///< Optional input sample count buffer. Only valid when kSamplesPerPixel == 0.
+    Texture2D<float3> viewDir;                      ///< Optional view direction. Only valid when kUseViewDir == true (bascially it's when using thin-len camera).
+    Texture2D<uint> sampleCount;                    ///< Optional input sample count buffer. Only valid when kSamplesPerPixel == 0 (variable sample count).
     RWTexture2D<uint> sampleOffset;                 ///< Output offset into per-sample buffers. Only valid when kSamplesPerPixel == 0.
 
     RWStructuredBuffer<ColorType> sampleColor;      ///< Output per-sample color if kSamplesPerPixel != 1.
@@ -78,6 +80,8 @@ struct PathGenerator
     NRDBuffers outputNRD;                           ///< Output NRD data.
 
     RWTexture2D<float4> outputColor;                ///< Output color buffer if kSamplesPerPixel == 1.
+
+    ReSTIRGDI restirGdi;
 
     // Render settings that depend on the scene.
     // TODO: Move into scene defines.
@@ -97,6 +101,9 @@ struct PathGenerator
         // The tiles themselves are enumerated in scanline order on screen.
         const uint2 tileOffset = tileID << kScreenTileBits; // Tile offset in pixels.
         const uint2 pixel = deinterleave_8bit(threadIdx) + tileOffset; // Assumes 16x16 tile or smaller. A host-side assert checks this assumption.
+        printSetPixel(pixel);
+
+        print("GeneratePaths pass ------------------------------------", 1);
 
         // Process each pixel.
         // If we don't hit any surface then the background will be evaluated and written out directly.
@@ -112,41 +119,29 @@ struct PathGenerator
             // TODO: We may want to use a nearest sampler to allow the texture to be of arbitrary dimension.
             spp = kSamplesPerPixel > 0 ? kSamplesPerPixel : min(sampleCount[pixel], kMaxSamplesPerPixel);
 
-            // Compute the primary ray.
-            cameraRay = gScene.camera.computeRayPinhole(pixel, params.frameDim);
-            if (kUseViewDir) cameraRay.dir = -viewDir[pixel];
-
             // Load the primary hit from the V-buffer.
             const HitInfo hit = HitInfo(vbuffer[pixel]);
             hitSurface = hit.isValid();
 
+            // Compute the primary ray.
+            cameraRay = gScene.camera.computeRayPinhole(pixel, params.frameDim); // default ray
+            if (kUseViewDir) cameraRay.dir = -viewDir[pixel]; // update ray direction
+
             // Prepare per-pixel surface data for RTXDI.
-            if (kUseRTXDI)
+            if (kUseReSTIR)
             {
+                // Set surface data for *true* sampled v-buffer
                 bool validSurface = false;
+                let lod = ExplicitLodTextureSampler(0.f);
                 if (hitSurface)
                 {
-                    let lod = ExplicitLodTextureSampler(0.f);
                     ShadingData sd = loadShadingData(hit, cameraRay.origin, cameraRay.dir, lod);
-
-                    // Create material instance and query its properties.
-                    let hints = getMaterialInstanceHints(hit, true /* primary hit */);
-                    let mi = gScene.materials.getMaterialInstance(sd, lod, hints);
-                    let bsdfProperties = mi.getProperties(sd);
-
-                    // Check for BSDF lobes that RTXDI can sample.
-                    uint lobeTypes = mi.getLobeTypes(sd);
-                    validSurface = (lobeTypes & (uint)LobeType::NonDeltaReflection) != 0;
-
-                    if (validSurface)
-                    {
-                        // RTXDI uses a simple material model with only diffuse and specular reflection lobes.
-                        // We query the BSDF for the diffuse albedo and specular reflectance.
-                        gRTXDI.setSurfaceData(pixel, sd.computeRayOrigin(), bsdfProperties.guideNormal, bsdfProperties.diffuseReflectionAlbedo, bsdfProperties.specularReflectance, bsdfProperties.roughness);
-                    }
+                    validSurface = setSurfaceDataForReSTIR(pixel, sd, hit, lod, false);
                 }
-                if (!validSurface) gRTXDI.setInvalidSurfaceData(pixel);
+                if (!validSurface) restirGdi.setInvalidSurfaceData(pixel);
+
             }
+
         }
 
         // Perform a reduction over the tile to determine the number of samples required.
@@ -200,30 +195,31 @@ struct PathGenerator
             if (!hitSurface)
             {
                 // Write background pixels.
-                writeBackground(pixel, spp, outIdx, cameraRay.dir);
+                Ray centerRay = gScene.camera.computeRayPinhole(pixel, params.frameDim);
+                writeBackground(pixel, spp, outIdx, cameraRay.dir, centerRay.dir);
             }
         }
     }
 
-    void writeBackground(const uint2 pixel, const uint spp, const uint outIdx, const float3 dir)
+    void writeBackground(const uint2 pixel, const uint spp, const uint outIdx, const float3 dir, const float3 centerDir)
     {
         // Evaluate background color for the current pixel.
         float3 color = float3(0.f);
         if (kUseEnvLight)
         {
             color = gScene.envMap.eval(dir);
+
+            // We should also include background environment map hit in ReSTIR
+            restirGdi.setSurfaceDataForEnvMap(pixel, color, false);
+            restirGdi.setSurfaceDataForEnvMap(pixel, gScene.envMap.eval(centerDir), true);
         }
 
         // Write color and denoising guide data for all samples in pixel.
         // For the special case of fixed 1 spp we write the color directly to the output texture.
-        if (kSamplesPerPixel == 1)
-        {
-            outputColor[pixel] = float4(color, 1.f);
-        }
 
         for (uint i = 0; i < spp; i++)
         {
-            if (kSamplesPerPixel != 1)
+            if (kSamplesPerPixel != 1 || params.useGaussianFilter)
             {
                 sampleColor[outIdx + i].set(color);
             }
@@ -254,6 +250,29 @@ struct PathGenerator
             writeNRDDeltaReflectionGuideBuffers(outputNRD, kUseNRDDemodulation, pixel, 0.f, 0.f, -dir, 0.f, kNRDInvalidPathLength, kNRDInvalidPathLength);
             writeNRDDeltaTransmissionGuideBuffers(outputNRD, kUseNRDDemodulation, pixel, 0.f, 0.f, -dir, 0.f, kNRDInvalidPathLength, 0.f);
         }
+    }
+
+    bool setSurfaceDataForReSTIR(const uint2 pixel, const ShadingData sd, const HitInfo hit, const ITextureSampler lod, bool isCenter)
+    {
+        // Create material instance and query its properties.
+        let hints = getMaterialInstanceHints(hit, true /* primary hit */);
+        let mi = gScene.materials.getMaterialInstance(sd, lod, hints);
+        let bsdfProperties = mi.getProperties(sd);
+        MaterialType materialType = sd.mtl.getMaterialType();
+
+        // Check for BSDF lobes that RTXDI can sample.
+        uint lobeTypes = mi.getLobeTypes(sd);
+        bool validSurface = (lobeTypes & (uint)LobeType::NonDeltaReflection) != 0;
+
+        if (validSurface)
+        {
+            // RTXDI uses a simple material model with only diffuse and specular reflection lobes.
+            // We query the BSDF for the diffuse albedo and specular reflectance.
+            restirGdi.setSurfaceData(pixel, hit, sd.computeRayOrigin(), bsdfProperties.guideNormal, sd.getOrientedFaceNormal(), bsdfProperties.diffuseReflectionAlbedo,
+                bsdfProperties.specularReflectance, bsdfProperties.roughness, bsdfProperties.emission, materialType, lobeTypes, isCenter);
+        }
+
+        return validSurface;
     }
 };
 

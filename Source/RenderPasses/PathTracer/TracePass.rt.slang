@@ -55,6 +55,7 @@ struct DummyAttribs { uint dummy; };
 struct PathPayload
 {
     uint4 packed[5];
+    uint id2;
 
     PackedHitInfo hit;
     GuideData guideData;
@@ -66,7 +67,8 @@ struct PathPayload
         PathPayload p = {};
 
         p.packed[0].xyz = asuint(path.origin);
-        p.packed[0].w = path.id;
+        p.packed[0].w = path.id.x;
+        p.id2 = path.id.y;
 
         p.packed[1].xyz = asuint(path.dir);
         p.packed[1].w = path.flagsAndVertexIndex;
@@ -93,7 +95,8 @@ struct PathPayload
         PathState path = {};
 
         path.origin = asfloat(p.packed[0].xyz);
-        path.id = p.packed[0].w;
+        path.id.x = p.packed[0].w;
+        path.id.y = p.id2;
 
         path.dir = asfloat(p.packed[1].xyz);
         path.flagsAndVertexIndex = p.packed[1].w;
@@ -448,12 +451,16 @@ struct Scheduler
     /** Traces a path and write result to output.
         \param[in] pathID Path ID.
     */
-    void tracePath(uint pathID)
+    void tracePath(uint2 pathID)
     {
         PathState path = {};
+        PathState emissivePath = {};
 
         gPathTracer.generatePath(pathID, path);
         gPathTracer.setupPathLogging(path);
+
+        // Also set another pathState for emission sample
+        // gPathTracer.generateEmissivePath(pathID, emissivePath);
 
         // Handle primary hit/miss.
         if (path.isHit())
@@ -471,6 +478,9 @@ struct Scheduler
         {
             // Note the primary miss has already been handled by the separate path generation pass
             // the path tracer runs first. Abort execution here to avoid double work.
+
+            // Song: The above statement is no longer true, we also sample the background in ReSTIR
+            gPathTracer.writePrimaryMiss(path);
             return;
         }
 
@@ -497,12 +507,27 @@ struct Scheduler
             samplesRemaining = gPathTracer.sampleCount[pixel];
         }
 
+        // Reset output color
+        gPathTracer.outputColor[pixel] = float4(0, 0, 0, 1);
+
         // Loop over samples.
         while (samplesRemaining > 0)
         {
             samplesRemaining -= 1;
-            uint pathID = pixel.x | (pixel.y << 12) | (samplesRemaining << 24);
-            tracePath(pathID);
+
+            if (kUseReSTIR)
+            {
+                for (uint passIdx = 0; passIdx < gPathTracer.restirGdi.numRestirPasses; passIdx++)
+                {
+                    uint2 pathID = uint2(pixel.x | (pixel.y << 12) | (samplesRemaining << 24), passIdx);
+                    tracePath(pathID);
+                }
+            }
+            else
+            {
+                uint2 pathID = pixel.x | (pixel.y << 12) | (samplesRemaining << 24);
+                tracePath(pathID);
+            }
         }
     }
 }
