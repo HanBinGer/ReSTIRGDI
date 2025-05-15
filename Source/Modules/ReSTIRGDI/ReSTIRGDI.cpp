@@ -244,21 +244,6 @@ namespace Falcor
             widget.tooltip("Use unbiased version of ReSTIR by querying extra visibility rays.");
         }
 
-        if (auto group = widget.group("Profiles"))
-        {
-            group.text("> Resampling Global Resources:");
-            group.text("Reservoir buffer size: {}" + mDirectLightingResources.pReservoirs ? formatByteSize(mDirectLightingResources.pReservoirs->getSize()) : "0");
-            group.text("Previous reservoir buffer size: {}" + mDirectLightingResources.pPrevReservoirs ? formatByteSize(mDirectLightingResources.pPrevReservoirs->getSize()) : "0");
-            group.text("Evaluation reservoir context buffer size: {}" + mDirectLightingResources.pResEvalContext ? formatByteSize(mDirectLightingResources.pResEvalContext->getSize()) : "0");
-            group.text("Previous reservoir evaluation context buffer size: {}" + mDirectLightingResources.pPrevResEvalContext ? formatByteSize(mDirectLightingResources.pPrevResEvalContext->getSize()) : "0");
-            group.text("Pixel center evaluation context buffer size: {}" + mDirectLightingResources.pPixelCenterEvalContext ? formatByteSize(mDirectLightingResources.pPixelCenterEvalContext->getSize()) : "0");
-            group.text("Previous pixel center evaluation context buffer size: {}" + mDirectLightingResources.pPrevPixelCenterEvalContext ? formatByteSize(mDirectLightingResources.pPrevPixelCenterEvalContext->getSize()) : "0");
-            group.text("Final sample buffer size: {}" + mDirectLightingResources.pFinalSamples ? formatByteSize(mDirectLightingResources.pFinalSamples->getSize()) : "0");
-            group.text("Final primary hits buffer size: {}" + mDirectLightingResources.pFinalPrimaryHits ? formatByteSize(mDirectLightingResources.pFinalPrimaryHits->getSize()) : "0");
-
-            group.text("> Temporal Optimize Pretrace Resources:");
-            group.text("MIS PDFs data buffer size: {}" + mDirectLightingResources.pTemporalMISPDFs ? formatByteSize(mDirectLightingResources.pTemporalMISPDFs->getSize()) : "0");
-        }
 
         dirty |= mRecompile;
 
