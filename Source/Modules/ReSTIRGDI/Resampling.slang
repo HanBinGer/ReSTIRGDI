@@ -181,40 +181,36 @@ bool streamingResampleStepMIS<S : ISampleGenerator>(inout RisState state, const 
 // New resampling parts
 // --------------------------------------------
 
-// Song: I suppose this is used for debiasing? Where it is referred in the paper?
 float mFactor(float q0, float q1)
 {
     return q0 == 0.f ? 1.f : clamp(pow(min(q1 / q0, 1.f), 8.f), 0.f, 1.f);
 }
 
-// out_J = |inverse(T_i'(y))| -> jacobian from target to source domain
-float pairwiseMIS_nonDefensiveNonCanonical(float cSum, float c0, float pi, float c1, float pc, float out_J = 1.0f)
+float pairwiseMIS_nonDefensiveNonCanonical(float mSum, float mCandidate, float pi, float mCanonical, float pc, float out_J = 1.0f)
 {
     float pHatFrom_i = pi * out_J;
-    return pc == 0.0f ? 0.0f : c0 * pHatFrom_i / ((cSum - c1) * pHatFrom_i + c1 * pc);
+    return pc == 0.0f ? 0.0f : mCandidate * pHatFrom_i / ((mSum - mCanonical) * pHatFrom_i + mCanonical * pc);
 }
 
-float pairwiseMIS_nonDefensiveCanonical(float cSum, float c0, float pi, float c1, float pc, float out_J = 1.0f)
+float pairwiseMIS_nonDefensiveCanonical(float mSum, float mCandidate, float pi, float mCanonical, float pc, float out_J = 1.0f)
 {
-    float w = c1 * pc;
+    float w = mCanonical * pc;
     float pHatFrom_i = pi * out_J;
-    return pc == 0.0f ? 0.0f : (c0 / (cSum - c1)) * w / ((cSum - c1) * pHatFrom_i + w);
-    // return pc == 0.0f ? 0.0f : (c0 / cSum) * w / ((cSum - c1) * pi + w);
+    return pc == 0.0f ? 0.0f : (mCandidate / (mSum - mCanonical)) * w / ((mSum - mCanonical) * pHatFrom_i + w);
 }
 
-// Note: when using defensive version, canonical MIS weight should start with c1 / cSum
-float pairwiseMIS_defensiveNonCanonical(float cSum, float c0, float pi, float c1, float pc, float out_J = 1.0f)
+float pairwiseMIS_defensiveNonCanonical(float mSum, float mCandidate, float pi, float mCanonical, float pc, float out_J = 1.0f)
 {
     float pHatFrom_i = pi * out_J;
-    float w = (cSum - c1) * pHatFrom_i;
-    return pc == 0.0f ? 0.0f : (c0 / cSum) * w / (w + c1 * pc);
+    float w = (mSum - mCanonical) * pHatFrom_i;
+    return pc == 0.0f ? 0.0f : (mCandidate / mSum) * w / (w + mCanonical * pc);
 }
 
-float pairwiseMIS_defensiveCanonical(float cSum, float c0, float pi, float c1, float pc, float out_J = 1.0f)
+float pairwiseMIS_defensiveCanonical(float mSum, float mCandidate, float pi, float mCanonical, float pc, float out_J = 1.0f)
 {
     float pHatFrom_i = pi * out_J;
-    float w = c1 * pc;
-    return pc == 0.0f ? 0.0f : (c0 / cSum) * w / ((cSum - c1) * pHatFrom_i + w);
+    float w = mCanonical * pc;
+    return pc == 0.0f ? 0.0f : (mCandidate / mSum) * w / ((mSum - mCanonical) * pHatFrom_i + w);
 }
 
 // For origin point reservoir temporal resampling
