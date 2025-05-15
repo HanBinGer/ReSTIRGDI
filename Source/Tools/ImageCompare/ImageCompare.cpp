@@ -190,7 +190,7 @@ private:
 
 struct MSE
 {
-    double operator()(const float* a, const float* b, size_t count) const
+    double operator()(const float* a, const float* b, size_t count, double meanGray = 1) const
     {
         double error = 0.0;
         for (size_t i = 0; i < count; ++i)
@@ -201,7 +201,7 @@ struct MSE
 
 struct RMSE
 {
-    double operator()(const float* a, const float* b, size_t count) const
+    double operator()(const float* a, const float* b, size_t count, double meanGray = 1) const
     {
         double error = 0.0;
         for (size_t i = 0; i < count; ++i)
@@ -212,7 +212,7 @@ struct RMSE
 
 struct MAE
 {
-    double operator()(const float* a, const float* b, size_t count) const
+    double operator()(const float* a, const float* b, size_t count, double meanGray = 1) const
     {
         double error = 0.0;
         for (size_t i = 0; i < count; ++i)
@@ -223,12 +223,14 @@ struct MAE
 
 struct MAPE
 {
-    double operator()(const float* a, const float* b, size_t count) const
+    double operator()(const float* a, const float* b, size_t count, double meanGray = 1) const
     {
         double error = 0.0;
+        //double gray = 0.299 * a[0] + 0.587 * a[1] + 0.114 * a[2];
+        double gray = (double)(a[0] + a[1] + a[2]) / 3.0;
         for (size_t i = 0; i < count; ++i)
-            error += std::fabs((a[i] - b[i]) / (a[i] + 1e-3));
-        return 100.0 * error / count;
+            error += std::fabs((a[i] - b[i]));
+        return error / (gray + 1e-2 * meanGray) / count;
     }
 };
 
@@ -240,9 +242,20 @@ double compare(const Image& imageA, const Image& imageB, bool alpha, float* erro
     const float* a = imageA.getData();
     const float* b = imageB.getData();
     size_t count = imageA.getWidth() * imageA.getHeight();
+
+    const float* gr = a;
+    double meanGray = 0;
     for (size_t i = 0; i < count; ++i)
     {
-        double error = metric(a, b, alpha ? 4 : 3);
+        //meanGray += 0.299 * gr[0] + 0.587 * gr[1] + 0.114 * gr[2];
+        meanGray += (gr[0] + gr[1] + gr[2]) / 3;
+        gr += 4;
+    }
+    meanGray = meanGray / count;
+
+    for (size_t i = 0; i < count; ++i)
+    {
+        double error = metric(a, b, alpha ? 4 : 3, meanGray);
         if (errorMap)
             *errorMap++ = float(error);
         sum += error;
@@ -349,6 +362,7 @@ static bool compareImages(
 
     uint32_t width = imageA->getWidth();
     uint32_t height = imageB->getHeight();
+
 
     // Compare images.
     std::unique_ptr<float[]> errorMap = heatMapPath.empty() ? nullptr : std::make_unique<float[]>(width * height);
