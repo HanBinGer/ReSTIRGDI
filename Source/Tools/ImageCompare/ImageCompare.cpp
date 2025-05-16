@@ -221,6 +221,17 @@ struct MAE
     }
 };
 
+struct RMAE
+{
+    double operator()(const float* a, const float* b, size_t count, double meanRef = 1) const
+    {
+        double error = 0.0;
+        for (size_t i = 0; i < count; ++i)
+            error += std::fabs(sqr(a[i] - b[i]));
+        return error / count / meanRef;
+    }
+};
+
 struct MAPE
 {
     double operator()(const float* a, const float* b, size_t count, double meanGray = 1) const
@@ -251,7 +262,7 @@ double compare(const Image& imageA, const Image& imageB, bool alpha, float* erro
         meanGray += (gr[0] + gr[1] + gr[2]) / 3;
         gr += 4;
     }
-    meanGray = meanGray / count;
+    meanGray = meanGray / (count / 4.0);
 
     for (size_t i = 0; i < count; ++i)
     {
@@ -277,6 +288,7 @@ static const std::vector<ErrorMetric> errorMetrics = {
     {"rmse", "Relative Mean Squared Error", compare<RMSE>},
     {"mae", "Mean Absolute Error", compare<MAE>},
     {"mape", "Mean Absolute Percentage Error", compare<MAPE>},
+    {"rmae", "Relative Mean Absolute Error", compare<RMAE>},
 };
 
 static std::shared_ptr<Image> generateHeatMap(uint32_t width, uint32_t height, const float* errorMap)
