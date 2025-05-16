@@ -131,7 +131,7 @@ struct ResolvePass
                     // look at pixels in radius
                     int2 neighborPixel = pixel + int2(j, i);
                     if (!all(neighborPixel >= 0 && neighborPixel < params.frameDim)) continue;
-                    float2 samplePos = float2(j, i) + restirGdi.getFinalSubPixelSample(neighborPixel, 0) - 0.5; // assuming only 1 ReSTIR pass and 1 reservoir per pixel
+                    float2 samplePos = float2(j, i) - 0.5; // assuming only 1 ReSTIR pass and 1 reservoir per pixel
                     if (dot(samplePos, samplePos) < filterRadius * filterRadius)
                     {
                         float h = Gaussian(samplePos.x, expX, filterAlpha) * Gaussian(samplePos.y, expX, filterAlpha);

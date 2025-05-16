@@ -21,8 +21,6 @@ struct PackedFinalSample
     float3 dir;
     float distance;
     float3 Li;
-    float2 pixelSampleUV;
-    float2 lensSampleUV;
     uint pathSample;
     float3 misWeight;
 };
@@ -35,8 +33,6 @@ struct FinalSample
     float3 dir;     ///< Direction to the sampled light in world-space.
     float distance; ///< Distance to the sampled light.
     float3 Li;      ///< Weighted incident radiance.
-    float2 pixelSampleUV;
-    float2 lensSampelUV;
     uint pathSample;
     float3 misWeight; // MIS weight for RGB channel
 
@@ -59,8 +55,6 @@ struct FinalSample
         packed.dir = dir;
         packed.distance = distance;
         packed.Li = Li;
-        packed.pixelSampleUV = pixelSampleUV;
-        packed.lensSampleUV = lensSampelUV;
         packed.pathSample = pathSample;
         packed.misWeight = misWeight;
 #endif
@@ -77,8 +71,6 @@ struct FinalSample
         dir = packed.dir;
         distance = packed.distance;
         Li = packed.Li;
-        pixelSampleUV = packed.pixelSampleUV;
-        lensSampelUV = packed.lensSampleUV;
         pathSample = packed.pathSample;
         misWeight = packed.misWeight;
 #endif

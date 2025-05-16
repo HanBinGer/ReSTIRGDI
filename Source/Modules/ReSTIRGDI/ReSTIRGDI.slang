@@ -121,20 +121,6 @@ struct ReSTIRGDI
         return distance > 0.f;
     }
 
-    float2 getFinalSubPixelSample(uint2 pixel, uint passIdx)
-    {
-        uint pixelIndexInFinalSample = getPixelIndex(frameDim, pixel, passIdx);
-        FinalSample finalSample = finalSamplesForDI[pixelIndexInFinalSample];
-        return finalSample.pixelSampleUV;
-    }
-
-    float2 getFinalLensSample(uint2 pixel, uint passIdx)
-    {
-        uint pixelIndexInFinalSample = getPixelIndex(frameDim, pixel, passIdx);
-        FinalSample finalSample = finalSamplesForDI[pixelIndexInFinalSample];
-        return finalSample.lensSampelUV;
-    }
-
     uint getFinalPathSample(uint2 pixel, uint passIdx)
     {
         uint pixelIndexInFinalSample = getPixelIndex(frameDim, pixel, passIdx);
