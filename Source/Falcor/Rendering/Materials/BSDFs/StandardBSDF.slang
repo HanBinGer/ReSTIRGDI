@@ -44,7 +44,7 @@ import DiffRendering.DiffMaterialData;
 __exported import Rendering.Materials.IBSDF;
 
 // Enable support for delta reflection/transmission.
-#define EnableDeltaBSDF 1
+#define EnableDeltaBSDF 0
 
 // We clamp the GGX width parameter to avoid numerical instability.
 // In some computations, we can avoid clamps etc. if 1.0 - alpha^2 != 1.0, so the epsilon should be 1.72666361e-4 or

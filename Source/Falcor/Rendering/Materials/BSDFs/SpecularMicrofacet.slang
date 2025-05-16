@@ -33,7 +33,7 @@ import Rendering.Materials.Fresnel;
 __exported import Rendering.Materials.IBSDF;
 
 // Enable support for delta reflection/transmission.
-#define EnableDeltaBSDF 1
+#define EnableDeltaBSDF 0
 
 // Enable GGX sampling using the distribution of visible normals (VNDF) instead of classic NDF sampling.
 // This should be the default as it has lower variance, disable for testing only.

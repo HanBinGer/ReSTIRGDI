@@ -31,6 +31,9 @@ import Scene.Material.StandardMaterialParamLayout;
 import Scene.Material.BasicMaterialData;
 import Scene.Material.ShadingUtils;
 
+#define DISABLE_MATERIAL_BSDF 0
+#define EnableDeltaBSDF 0
+
 /** Implementation of Falcor's standard surface material.
 
     The material is a linear combination of six BSDF lobes handling
@@ -72,7 +75,17 @@ struct StandardMaterial : MaterialBase, IMaterial
 
         // Sample the specular texture.
         // Depending on the shading model this encodes the material parameters differently.
-        const float4 spec = ms.sampleTexture(data.texSpecular, s, sd.uv, data.specular, lod);
+        float4 spec = ms.sampleTexture(data.texSpecular, s, sd.uv, data.specular, lod);
+
+#if DISABLE_MATERIAL_BSDF
+        spec.g = 1.0f;
+        spec.b = 0.0f;
+#endif
+
+// Remove this if ReSTIR can handle delta event
+#if !EnableDeltaBSDF
+        spec.g = max(0.08, spec.g);
+#endif
 
 #if MATERIAL_SYSTEM_HAS_SPEC_GLOSS_MATERIALS
         if (data.getShadingModel() == ShadingModel::MetalRough)
